@@ -1,0 +1,818 @@
+import os
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+from Bio import Entrez, Medline
+
+# Set up PubMed API access
+Entrez.email = "your-email@example.com"  # Required by NCBI
+
+def fetch_pubmed_articles(query, max_results=100):
+    """Fetch articles from PubMed based on query"""
+    # Search PubMed
+    handle = Entrez.esearch(db="pubmed", term=query, retmax=max_results)
+    record = Entrez.read(handle)
+    handle.close()
+    
+    # Get the list of IDs
+    id_list = record["IdList"]
+    
+    # Fetch details for each article
+    handle = Entrez.efetch(db="pubmed", id=id_list, rettype="medline", retmode="text")
+    records = Medline.parse(handle)
+    articles = list(records)
+    handle.close()
+    
+    return articles
+
+def fetch_clinical_guidelines(source_urls):
+    """Fetch clinical guidelines from specified URLs"""
+    guidelines = []
+    
+    for url in source_urls:
+        response = requests.get(url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Extract text content (this will need to be customized based on the site structure)
+            content = soup.get_text()
+            guidelines.append({
+                'source': url,
+                'content': content
+            })
+    
+    return guidelines
+
+# Example usage
+query = "emergency triage AND (protocol OR guideline)"
+pubmed_articles = fetch_pubmed_articles(query)
+
+guideline_urls = [
+    "https://www.cdc.gov/triage/guidelines.html",  # Example URL
+    "https://www.who.int/emergencies/triage-protocols"  # Example URL
+]
+clinical_guidelines = fetch_clinical_guidelines(guideline_urls)
+
+
+import re
+import nltk
+from nltk.tokenize import sent_tokenize
+import spacy
+
+# Download necessary NLTK data
+nltk.download('punkt')
+
+# Load SpaCy model for medical entity recognition
+# Use the clinical model if available
+nlp = spacy.load("en_core_sci_md")  # Scientific/medical NER model
+
+def preprocess_medical_text(text):
+    """Clean and normalize medical text"""
+    # Remove URLs
+    text = re.sub(r'http\S+', '', text)
+    
+    # Standardize whitespace
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Handle common medical abbreviations (expand as needed)
+    medical_abbr = {
+        "pt": "patient",
+        "tx": "treatment",
+        "dx": "diagnosis",
+        "hx": "history",
+        # Add more as needed
+    }
+    
+    for abbr, expansion in medical_abbr.items():
+        text = re.sub(r'\b' + abbr + r'\b', expansion, text, flags=re.IGNORECASE)
+    
+    return text.strip()
+
+def extract_medical_entities(text):
+    """Extract medical entities using SpaCy"""
+    doc = nlp(text)
+    entities = []
+    
+    for ent in doc.ents:
+        if ent.label_ in ["DISEASE", "CHEMICAL", "PROCEDURE", "ANATOMY"]:
+            entities.append({
+                "text": ent.text,
+                "label": ent.label_,
+                "start": ent.start_char,
+                "end": ent.end_char
+            })
+    
+    return entities
+
+def chunk_medical_text(text, chunk_size=800, overlap=100):
+    """Split text into chunks with semantic boundaries"""
+    # First split by sentences
+    sentences = sent_tokenize(text)
+    
+    chunks = []
+    current_chunk = []
+    current_size = 0
+    
+    for sentence in sentences:
+        sentence_tokens = len(sentence.split())
+        
+        # If adding this sentence would exceed chunk size and we already have content
+        if current_size + sentence_tokens > chunk_size and current_chunk:
+            # Join the current chunk and add to chunks
+            chunks.append(" ".join(current_chunk))
+            
+            # Start new chunk with overlap
+            overlap_size = 0
+            overlap_chunk = []
+            
+            # Add sentences for overlap
+            for s in reversed(current_chunk):
+                overlap_chunk.insert(0, s)
+                overlap_size += len(s.split())
+                if overlap_size >= overlap:
+                    break
+                    
+            # Start the new chunk with the overlap
+            current_chunk = overlap_chunk
+            current_size = overlap_size
+        
+        # Add the current sentence to the chunk
+        current_chunk.append(sentence)
+        current_size += sentence_tokens
+    
+    # Add the last chunk if it has content
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    
+    return chunks
+
+# Process our collected data
+processed_data = []
+
+# Process PubMed articles
+for article in pubmed_articles:
+    if 'AB' in article:  # Abstract field
+        text = article['AB']
+        processed_text = preprocess_medical_text(text)
+        entities = extract_medical_entities(processed_text)
+        chunks = chunk_medical_text(processed_text)
+        
+        for i, chunk in enumerate(chunks):
+            processed_data.append({
+                'content': chunk,
+                'source': f"PubMed: {article.get('TI', 'Unknown')}",
+                'source_id': article.get('PMID', ''),
+                'chunk_id': i,
+                'entities': [e for e in entities if e['start'] >= chunk.find(e['text']) and e['end'] <= chunk.find(e['text']) + len(e['text'])],
+                'metadata': {
+                    'authors': article.get('AU', []),
+                    'publication_date': article.get('DP', ''),
+                    'journal': article.get('JT', ''),
+                }
+            })
+
+# Similarly process clinical guidelines
+for guideline in clinical_guidelines:
+    text = guideline['content']
+    processed_text = preprocess_medical_text(text)
+    entities = extract_medical_entities(processed_text)
+    chunks = chunk_medical_text(processed_text)
+    
+    for i, chunk in enumerate(chunks):
+        processed_data.append({
+            'content': chunk,
+            'source': f"Clinical Guideline: {guideline['source']}",
+            'chunk_id': i,
+            'entities': [e for e in entities if e['start'] >= chunk.find(e['text']) and e['end'] <= chunk.find(e['text']) + len(e['text'])],
+            'metadata': {
+                'source_url': guideline['source'],
+                'type': 'clinical_guideline'
+            }
+        })
+
+        import torch
+from transformers import AutoTokenizer, AutoModel
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+class MedicalEmbeddingGenerator:
+    def __init__(self, model_name="pritamdeka/S-PubMedBert-MS-MARCO"):
+        """Initialize with a biomedical embedding model"""
+        try:
+            # Try sentence-transformers first (easier to use)
+            self.model = SentenceTransformer(model_name)
+            self.tokenizer = None  # Not needed separately with SentenceTransformer
+            self.using_sentence_transformer = True
+        except:
+            # Fall back to HuggingFace transformers
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModel.from_pretrained(model_name)
+            self.using_sentence_transformer = False
+    
+    def generate_embeddings(self, texts):
+        """Generate embeddings for a list of texts"""
+        if self.using_sentence_transformer:
+            # Sentence-transformers approach
+            embeddings = self.model.encode(texts, convert_to_tensor=True)
+            return embeddings.cpu().numpy()
+        else:
+            # Manual approach with HuggingFace transformers
+            embeddings = []
+            
+            for text in texts:
+                # Tokenize and prepare for the model
+                inputs = self.tokenizer(text, padding=True, truncation=True, 
+                                        return_tensors="pt", max_length=512)
+                
+                # Generate embeddings
+                with torch.no_grad():
+                    outputs = self.model(**inputs)
+                
+                # Use [CLS] token embedding as the sentence embedding
+                sentence_embedding = outputs.last_hidden_state[:, 0, :].cpu().numpy()
+                embeddings.append(sentence_embedding[0])
+            
+            return np.array(embeddings)
+        
+    def generate_embedding(self, text):
+        """Generate embedding for a single text"""
+        return self.generate_embeddings([text])[0]
+
+# Usage example
+embedding_generator = MedicalEmbeddingGenerator()
+
+# Generate embeddings for our processed chunks
+for item in processed_data:
+    item['embedding'] = embedding_generator.generate_embedding(item['content'])
+
+
+    import chromadb
+from chromadb.config import Settings
+
+class MedicalVectorStore:
+    def __init__(self, persist_directory="./medical_chroma_db"):
+        """Initialize ChromaDB client with persistence"""
+        self.client = chromadb.Client(Settings(
+            persist_directory=persist_directory,
+            chroma_db_impl="duckdb+parquet",
+        ))
+        
+        # Create collection for medical data
+        self.collection = self.client.get_or_create_collection(
+            name="medical_triage_data",
+            metadata={"description": "Medical data for triage system"}
+        )
+    
+    def add_documents(self, documents):
+        """Add documents to the vector store
+        
+        Each document should have:
+        - content: The text content
+        - embedding: The pre-computed embedding (optional)
+        - metadata: Additional metadata
+        """
+        ids = []
+        embeddings = []
+        contents = []
+        metadatas = []
+        
+        for i, doc in enumerate(documents):
+            doc_id = f"{doc.get('source_id', '')}-{doc.get('chunk_id', i)}"
+            
+            # Prepare metadata (ChromaDB requires dict with simple types)
+            metadata = {
+                "source": doc.get('source', ''),
+                "chunk_id": str(doc.get('chunk_id', i)),
+            }
+            
+            # Add any additional metadata fields that are simple types
+            for k, v in doc.get('metadata', {}).items():
+                if isinstance(v, (str, int, float, bool)) or v is None:
+                    metadata[k] = v
+                elif isinstance(v, list) and all(isinstance(item, str) for item in v):
+                    metadata[k] = ", ".join(v)  # Convert lists of strings to comma-separated strings
+            
+            # Add main entity types to metadata for filtering
+            entity_types = {e['label'] for e in doc.get('entities', [])}
+            metadata["entity_types"] = ", ".join(entity_types)
+            
+            ids.append(doc_id)
+            contents.append(doc['content'])
+            metadatas.append(metadata)
+            
+            if 'embedding' in doc:
+                embeddings.append(doc['embedding'])
+        
+        # Add to collection
+        if embeddings and len(embeddings) == len(ids):
+            self.collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                documents=contents,
+                metadatas=metadatas
+            )
+        else:
+            # Let ChromaDB handle embedding generation
+            self.collection.add(
+                ids=ids,
+                documents=contents,
+                metadatas=metadatas
+            )
+    
+    def query(self, query_text, embedding=None, filter_criteria=None, n_results=5):
+        """Query the vector store"""
+        if embedding is None and query_text:
+            # Let ChromaDB generate embeddings
+            results = self.collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                where=filter_criteria
+            )
+        else:
+            # Use provided embedding
+            results = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=n_results,
+                where=filter_criteria
+            )
+        
+        return results
+    
+    def get_count(self):
+        """Get count of documents in collection"""
+        return self.collection.count()
+    
+    def persist(self):
+        """Persist the database to disk"""
+        self.client.persist()
+
+# Initialize vector store
+vector_store = MedicalVectorStore()
+
+# Add our processed data with embeddings
+vector_store.add_documents(processed_data)
+
+# Persist to disk
+vector_store.persist()
+
+
+class MedicalRetrievalEngine:
+    def __init__(self, vector_store, embedding_generator):
+        self.vector_store = vector_store
+        self.embedding_generator = embedding_generator
+        
+    def extract_query_entities(self, query):
+        """Extract medical entities from the query for better retrieval"""
+        entities = extract_medical_entities(query)
+        return entities
+    
+    def expand_medical_query(self, query):
+        """Expand query with medical synonyms and related terms"""
+        # This is a simplified version - in production you'd use a medical ontology like UMLS
+        expansions = {
+            "heart attack": ["myocardial infarction", "cardiac arrest", "MI"],
+            "stroke": ["cerebrovascular accident", "CVA", "brain attack"],
+            "high blood pressure": ["hypertension", "HTN"],
+            # Add more common medical terms
+        }
+        
+        expanded_query = query
+        for term, synonyms in expansions.items():
+            if term.lower() in query.lower():
+                # Add synonyms to query
+                expanded_query += " OR " + " OR ".join(synonyms)
+                
+        return expanded_query
+    
+    def generate_hybrid_query(self, patient_symptoms):
+        """Create a hybrid query combining symptom description and medical entities"""
+        # Extract medical entities
+        entities = self.extract_query_entities(patient_symptoms)
+        entity_terms = " ".join([e["text"] for e in entities])
+        
+        # Combine with original query
+        if entity_terms:
+            hybrid_query = f"{patient_symptoms} {entity_terms}"
+        else:
+            hybrid_query = patient_symptoms
+            
+        # Expand with medical synonyms
+        expanded_query = self.expand_medical_query(hybrid_query)
+        
+        return expanded_query
+    
+    def filter_by_relevance(self, results, patient_symptoms):
+        """Apply additional relevance scoring to rerank results"""
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+        
+        # Extract the documents
+        documents = results['documents'][0]
+        
+        # If we have fewer than 2 documents, return as is
+        if len(documents) < 2:
+            return results
+        
+        # Use TF-IDF to rerank based on keyword relevance
+        tfidf = TfidfVectorizer()
+        tfidf_matrix = tfidf.fit_transform([patient_symptoms] + documents)
+        
+        # Calculate similarity to query
+        similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
+        
+        # Get indices in descending order of similarity
+        reranked_indices = similarities.argsort()[::-1]
+        
+        # Rerank all result lists
+        for key in results:
+            if isinstance(results[key], list) and len(results[key]) > 0 and isinstance(results[key][0], list):
+                results[key][0] = [results[key][0][i] for i in reranked_indices]
+        
+        return results
+    
+    def retrieve(self, patient_symptoms, specialties=None, max_results=5):
+        """Main retrieval method combining all strategies"""
+        # Generate expanded query
+        query = self.generate_hybrid_query(patient_symptoms)
+        
+        # Generate embedding
+        query_embedding = self.embedding_generator.generate_embedding(query)
+        
+        # Build filter criteria
+        filter_criteria = {}
+        if specialties:
+            # Filter by medical specialty if provided
+            if isinstance(specialties, str):
+                specialties = [specialties]
+            filter_criteria = {"$or": [{"metadata.specialty": specialty} for specialty in specialties]}
+        
+        # Perform vector search
+        results = self.vector_store.query(
+            query_text=query,
+            embedding=query_embedding,
+            filter_criteria=filter_criteria,
+            n_results=max_results * 2  # Retrieve extra for reranking
+        )
+        
+        # Rerank results
+        reranked_results = self.filter_by_relevance(results, patient_symptoms)
+        
+        # Limit to desired number
+        for key in reranked_results:
+            if isinstance(reranked_results[key], list) and len(reranked_results[key]) > 0 and isinstance(reranked_results[key][0], list):
+                reranked_results[key][0] = reranked_results[key][0][:max_results]
+        
+        return reranked_results
+
+# Initialize our retrieval engine
+retrieval_engine = MedicalRetrievalEngine(vector_store, embedding_generator)
+
+# Example usage
+patient_description = "I have severe chest pain that started 30 minutes ago, with pain radiating to my left arm. I'm sweating a lot and feel nauseous."
+retrieval_results = retrieval_engine.retrieve(patient_description)
+
+
+import os
+from langchain.llms import OpenAI
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+
+class MedicalTriageRAG:
+    def __init__(self, retrieval_engine, api_key=None):
+        """Initialize the medical triage RAG system"""
+        # Set up OpenAI API
+        if api_key:
+            os.environ["OPENAI_API_KEY"] = api_key
+        self.llm = OpenAI(temperature=0.1)  # Low temperature for medical assessments
+        self.retrieval_engine = retrieval_engine
+        
+        # Define prompt templates
+        self.triage_prompt = PromptTemplate(
+            input_variables=["patient_info", "medical_context"],
+            template="""
+            You are an AI medical triage assistant. Your task is to assess the patient's symptoms and recommend an appropriate level of care.
+            
+            MEDICAL KNOWLEDGE:
+            {medical_context}
+            
+            PATIENT INFORMATION:
+            {patient_info}
+            
+            Based ONLY on the medical knowledge provided above, please:
+            1. Identify the most likely conditions that match these symptoms
+            2. Determine the urgency level (Emergent, Urgent, Non-urgent)
+            3. Recommend next steps (e.g., call 911, visit ER, make doctor appointment)
+            
+            If the information is insufficient to make a determination, explicitly state what additional information would be needed.
+            
+            IMPORTANT: Do not provide medical advice beyond what is supported by the given medical context.
+            
+            ASSESSMENT:
+            """
+        )
+        
+        # Create the chain
+        self.chain = LLMChain(llm=self.llm, prompt=self.triage_prompt)
+    
+    def format_retrieved_context(self, retrieval_results):
+        """Format retrieved documents into a context string"""
+        documents = retrieval_results['documents'][0]
+        metadatas = retrieval_results['metadatas'][0]
+        contexts = []
+        
+        for i, (doc, metadata) in enumerate(zip(documents, metadatas)):
+            source = metadata.get('source', 'Unknown')
+            context_str = f"[SOURCE {i+1}: {source}]\n{doc}\n"
+            contexts.append(context_str)
+        
+        return "\n".join(contexts)
+    
+    def run_triage(self, patient_symptoms, patient_history=""):
+        """Run the full triage process"""
+        # Combine symptoms and history
+        if patient_history:
+            patient_info = f"Symptoms: {patient_symptoms}\nMedical History: {patient_history}"
+        else:
+            patient_info = f"Symptoms: {patient_symptoms}"
+            
+        # Retrieve relevant medical information
+        retrieval_results = self.retrieval_engine.retrieve(patient_symptoms)
+        
+        # Format retrieved context
+        medical_context = self.format_retrieved_context(retrieval_results)
+        
+        # Run the LLM chain for triage assessment
+        response = self.chain.run(patient_info=patient_info, medical_context=medical_context)
+        
+        # Create result object with both the assessment and the sources used
+        result = {
+            "assessment": response,
+            "sources": [
+                {"content": doc, "metadata": meta}
+                for doc, meta in zip(retrieval_results['documents'][0], retrieval_results['metadatas'][0])
+            ]
+        }
+        
+        return result
+
+# Initialize our triage system
+triage_system = MedicalTriageRAG(retrieval_engine, api_key="your-openai-api-key")
+
+# Example usage
+patient_symptoms = "Severe chest pain that started 30 minutes ago, with pain radiating to my left arm. I'm sweating a lot and feel nauseous."
+patient_history = "I have a history of high blood pressure and diabetes. I take lisinopril and metformin."
+
+triage_result = triage_system.run_triage(patient_symptoms, patient_history)
+print(triage_result["assessment"])
+
+
+class MedicalRAGEvaluator:
+    def __init__(self, triage_system):
+        self.triage_system = triage_system
+        self.evaluation_results = []
+    
+    def evaluate_case(self, case_id, patient_symptoms, patient_history, expected_urgency):
+        """Evaluate a single case"""
+        # Run triage
+        result = self.triage_system.run_triage(patient_symptoms, patient_history)
+        
+        # Simple detection of urgency level in the response
+        urgency_detected = None
+        response_lower = result["assessment"].lower()
+        
+        if "emergent" in response_lower or "emergency" in response_lower or "call 911" in response_lower:
+            urgency_detected = "Emergent"
+        elif "urgent" in response_lower or "urgent care" in response_lower:
+            urgency_detected = "Urgent"
+        elif "non-urgent" in response_lower or "routine" in response_lower:
+            urgency_detected = "Non-urgent"
+        else:
+            urgency_detected = "Unclear"
+        
+        # Calculate match
+        urgency_match = urgency_detected == expected_urgency
+        
+        # Store evaluation result
+        eval_result = {
+            "case_id": case_id,
+            "patient_symptoms": patient_symptoms,
+            "patient_history": patient_history,
+            "expected_urgency": expected_urgency,
+            "detected_urgency": urgency_detected,
+            "urgency_match": urgency_match,
+            "full_assessment": result["assessment"],
+            "sources_used": len(result["sources"])
+        }
+        
+        self.evaluation_results.append(eval_result)
+        return eval_result
+    
+    def evaluate_test_set(self, test_cases):
+        """Evaluate a set of test cases"""
+        for case in test_cases:
+            self.evaluate_case(
+                case["id"],
+                case["symptoms"],
+                case.get("history", ""),
+                case["expected_urgency"]
+            )
+        
+        # Calculate overall metrics
+        total_cases = len(self.evaluation_results)
+        urgency_matches = sum(1 for r in self.evaluation_results if r["urgency_match"])
+        accuracy = urgency_matches / total_cases if total_cases > 0 else 0
+        
+        metrics = {
+            "total_cases": total_cases,
+            "urgency_match_count": urgency_matches,
+            "accuracy": accuracy,
+            "results": self.evaluation_results
+        }
+        
+        return metrics
+
+# Example test cases
+test_cases = [
+    {
+        "id": "case_001",
+        "symptoms": "Severe chest pain radiating to left arm, started 30 minutes ago. Sweating and nauseous.",
+        "history": "History of high blood pressure, diabetes.",
+        "expected_urgency": "Emergent"
+    },
+    {
+        "id": "case_002",
+        "symptoms": "Fever of 101°F, sore throat, and cough for 2 days.",
+        "history": "Otherwise healthy.",
+        "expected_urgency": "Non-urgent"
+    },
+    {
+        "id": "case_003",
+        "symptoms": "Cut on hand while cooking, bleeding controlled with pressure, but may need stitches.",
+        "history": "No significant medical history.",
+        "expected_urgency": "Urgent"
+    }
+]
+
+# Initialize evaluator
+evaluator = MedicalRAGEvaluator(triage_system)
+
+# Run evaluation
+evaluation_metrics = evaluator.evaluate_test_set(test_cases)
+
+from fastapi import FastAPI, HTTPException, Depends, Body
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+import uvicorn
+import json
+
+# Models for API requests and responses
+class TriageRequest(BaseModel):
+    symptoms: str
+    medical_history: Optional[str] = ""
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    additional_info: Optional[Dict[str, Any]] = None
+
+class SourceInfo(BaseModel):
+    content: str
+    metadata: Dict[str, Any]
+
+class TriageResponse(BaseModel):
+    assessment: str
+    urgency_level: str
+    recommended_action: str
+    possible_conditions: List[str]
+    sources: List[SourceInfo]
+
+# Initialize FastAPI
+app = FastAPI(title="Medical Triage RAG API")
+
+# Global instances for RAG components
+# These would be initialized on startup in a real application
+embedding_generator = None
+vector_store = None
+retrieval_engine = None
+triage_system = None
+
+# Dependency to get triage system
+def get_triage_system():
+    # In a real application, you'd initialize these properly
+    # For now, we'll assume they're already initialized
+    if triage_system is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    return triage_system
+
+@app.post("/api/triage", response_model=TriageResponse)
+async def perform_triage(
+    request: TriageRequest,
+    triage_system: MedicalTriageRAG = Depends(get_triage_system)
+):
+    """Perform medical triage based on symptoms and history"""
+    try:
+        # Combine any additional information into the patient history
+        additional_info = ""
+        if request.age is not None:
+            additional_info += f"Age: {request.age}. "
+        if request.gender:
+            additional_info += f"Gender: {request.gender}. "
+        
+        # Add any other additional info
+        if request.additional_info:
+            for key, value in request.additional_info.items():
+                additional_info += f"{key}: {value}. "
+        
+        # Combine with history
+        full_history = f"{additional_info} {request.medical_history}".strip()
+        
+        # Run triage
+        result = triage_system.run_triage(request.symptoms, full_history)
+        
+        # Parse the assessment to extract structured information
+        # This is a simplified approach - in a real system you'd want more robust parsing
+        assessment = result["assessment"]
+        
+        # Extract urgency level
+        urgency_level = "Unknown"
+        if "emergent" in assessment.lower() or "emergency" in assessment.lower():
+            urgency_level = "Emergent"
+        elif "urgent" in assessment.lower():
+            urgency_level = "Urgent"
+        else:
+            urgency_level = "Non-urgent"
+        
+        # Extract recommended action
+        # Simple heuristic extraction - would be more sophisticated in production
+        recommended_action = ""
+        for line in assessment.split("\n"):
+            if "recommend" in line.lower() or "next step" in line.lower() or "should" in line.lower():
+                recommended_action = line.strip()
+                break
+        
+        # Extract possible conditions
+        possible_conditions = []
+        in_conditions_section = False
+        for line in assessment.split("\n"):
+            if "condition" in line.lower() or "diagnosis" in line.lower():
+                in_conditions_section = True
+                continue
+            if in_conditions_section and line.strip():
+                if ":" in line or "-" in line or ")" in line or "." in line:
+                    # Extract text after delimiter
+                    for delim in [":", "-", ")", "."]:
+                        if delim in line:
+                            parts = line.split(delim, 1)
+                            if len(parts) > 1:
+                                condition = parts[1].strip()
+                                if condition:
+                                    possible_conditions.append(condition)
+                                    break
+            # Stop if we hit another section
+            if in_conditions_section and (line.strip().endswith(":") or "urgency" in line.lower()):
+                in_conditions_section = False
+        
+        # Format sources
+        sources = [
+            SourceInfo(content=source["content"], metadata=source["metadata"])
+            for source in result["sources"]
+        ]
+        
+        # Create response
+        response = TriageResponse(
+            assessment=assessment,
+            urgency_level=urgency_level,
+            recommended_action=recommended_action,
+            possible_conditions=possible_conditions,
+            sources=sources
+        )
+        
+        return response
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Triage error: {str(e)}")
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize components on startup"""
+    global embedding_generator, vector_store, retrieval_engine, triage_system
+    
+    try:
+        # Initialize embedding model
+        embedding_generator = MedicalEmbeddingGenerator()
+        
+        # Initialize vector store
+        vector_store = MedicalVectorStore()
+        
+        # Initialize retrieval engine
+        retrieval_engine = MedicalRetrievalEngine(vector_store, embedding_generator)
+        
+        # Initialize triage system
+        triage_system = MedicalTriageRAG(retrieval_engine)
+        
+        print("Medical Triage RAG system initialized successfully")
+    except Exception as e:
+        print(f"Error initializing system: {str(e)}")
+
+# Run the API server
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+

@@ -1,0 +1,380 @@
+/* triage.css - Styles specific to the medical triage workflow */
+
+/* Triage Container */
+.triage-container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  /* Triage Header */
+  .triage-header {
+    text-align: center;
+    margin-bottom: var(--spacing-xl);
+  }
+  
+  .triage-logo {
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .triage-title {
+    color: var(--primary);
+    font-size: var(--font-size-3xl);
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .triage-subtitle {
+    color: var(--neutral);
+    font-size: var(--font-size-lg);
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  
+  /* Triage Form */
+  .triage-form {
+    background-color: var(--background);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--spacing-xl);
+  }
+  
+  .triage-step {
+    margin-bottom: var(--spacing-xl);
+  }
+  
+  .triage-step-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .triage-step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background-color: var(--primary);
+    color: white;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    margin-right: var(--spacing-md);
+  }
+  
+  .triage-step-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+  }
+  
+  /* Symptom Selection */
+  .symptom-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+  }
+  
+  .symptom-item {
+    padding: var(--spacing-md);
+    border: 1px solid var(--neutral-light);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+  }
+  
+  .symptom-item:hover {
+    border-color: var(--primary-light);
+    background-color: var(--primary-light);
+  }
+  
+  .symptom-item.selected {
+    border-color: var(--primary);
+    background-color: var(--primary-light);
+  }
+  
+  .symptom-item-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .symptom-icon {
+    margin-right: var(--spacing-sm);
+    color: var(--primary);
+  }
+  
+  .symptom-name {
+    font-weight: 500;
+  }
+  
+  .symptom-description {
+    font-size: var(--font-size-sm);
+    color: var(--neutral);
+  }
+  
+  /* Severity Scale */
+  .severity-scale {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: var(--spacing-lg) 0;
+  }
+  
+  .severity-point {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 60px;
+  }
+  
+  .severity-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    margin-bottom: var(--spacing-xs);
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+  }
+  
+  .severity-dot:hover {
+    transform: scale(1.1);
+  }
+  
+  .severity-dot.severity-1 { background-color: #c8e6c9; }
+  .severity-dot.severity-2 { background-color: #dcedc8; }
+  .severity-dot.severity-3 { background-color: #fff9c4; }
+  .severity-dot.severity-4 { background-color: #ffccbc; }
+  .severity-dot.severity-5 { background-color: #ffcdd2; }
+  
+  .severity-dot.selected {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 2px white, 0 0 0 4px var(--primary);
+  }
+  
+  .severity-label {
+    font-size: var(--font-size-xs);
+    color: var(--neutral);
+    margin-top: var(--spacing-xs);
+  }
+  
+  /* Chat Interface */
+  .chat-container {
+    border: 1px solid var(--neutral-light);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    height: 500px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .chat-header {
+    padding: var(--spacing-md);
+    background-color: var(--primary);
+    color: white;
+    display: flex;
+    align-items: center;
+  }
+  
+  .chat-title {
+    font-weight: 600;
+    flex: 1;
+  }
+  
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-md);
+    background-color: var(--surface);
+  }
+  
+  .chat-input-container {
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--neutral-light);
+    display: flex;
+    background-color: var(--background);
+  }
+  
+  .chat-input {
+    flex: 1;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 1px solid var(--neutral-light);
+    border-radius: var(--radius-full);
+    margin-right: var(--spacing-sm);
+  }
+  
+  .chat-send-btn {
+    border-radius: var(--radius-full);
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  /* Chat Messages */
+  .message {
+    margin-bottom: var(--spacing-md);
+    display: flex;
+    align-items: flex-start;
+  }
+  
+  .message-user {
+    justify-content: flex-end;
+  }
+  
+  .message-ai {
+    justify-content: flex-start;
+  }
+  
+  .message-content {
+    max-width: 80%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-lg);
+    position: relative;
+  }
+  
+  .message-user .message-content {
+    background-color: var(--primary);
+    color: white;
+    border-top-right-radius: 4px;
+  }
+  
+  .message-ai .message-content {
+    background-color: white;
+    border: 1px solid var(--neutral-light);
+    border-top-left-radius: 4px;
+  }
+  
+  .message-time {
+    font-size: var(--font-size-xs);
+    color: var(--neutral);
+    margin-top: var(--spacing-xs);
+    text-align: right;
+  }
+  
+  .message-typing {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-md);
+  }
+  
+  .message-typing-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background-color: var(--neutral);
+    margin-right: 3px;
+    animation: typing-dot 1.5s infinite ease-in-out;
+  }
+  
+  .message-typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  
+  .message-typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  
+  @keyframes typing-dot {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+  }
+  
+  /* Triage Results */
+  .triage-result {
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--spacing-xl);
+    border-left: 4px solid;
+  }
+  
+  .triage-result-emergency {
+    background-color: #ffebee;
+    border-left-color: var(--danger);
+  }
+  
+  .triage-result-urgent {
+    background-color: #fff8e1;
+    border-left-color: var(--warning);
+  }
+  
+  .triage-result-standard {
+    background-color: #e3f2fd;
+    border-left-color: var(--primary);
+  }
+  
+  .triage-result-selfcare {
+    background-color: #e8f5e9;
+    border-left-color: var(--secondary);
+  }
+  
+  .triage-result-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .triage-result-icon {
+    font-size: 24px;
+    margin-right: var(--spacing-md);
+  }
+  
+  .triage-result-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+  }
+  
+  .triage-result-recommendation {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+  }
+  
+  .triage-result-steps {
+    margin-top: var(--spacing-md);
+  }
+  
+  .triage-result-step {
+    margin-bottom: var(--spacing-sm);
+    display: flex;
+    align-items: flex-start;
+  }
+  
+  .triage-result-step-number {
+    background-color: white;
+    color: var(--neutral-dark);
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    margin-right: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  
+  /* Progress Indicator */
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: var(--neutral-light);
+    border-radius: var(--radius-full);
+    margin: var(--spacing-xl) 0;
+    overflow: hidden;
+  }
+  
+  .progress-bar-fill {
+    height: 100%;
+    background-color: var(--primary);
+    transition: width var(--transition-normal);
+  }
+  
+  /* Navigation Buttons */
+  .triage-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--spacing-lg);
+  }

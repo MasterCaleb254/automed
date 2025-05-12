@@ -1,0 +1,83 @@
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background-color: #1E3A8A;
+    color: white;
+  }
+  
+  .logo-section {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .logo {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin: 0;
+  }
+  
+  .logo-icon {
+    margin-right: 10px;
+  }
+  
+  .tagline {
+    font-size: 1.2rem;
+    margin: 5px 0 0;
+    font-style: italic;
+  }
+  
+  .navigation {
+    display: flex;
+  }
+  
+  .nav-links {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .nav-item {
+    margin: 0 15px;
+    text-decoration: none;
+    font-size: 1.1rem;
+    color: white;
+  }
+  
+  .nav-item:hover {
+    color: #FBBF24;
+  }
+  
+  .cta-section {
+    display: flex;
+    align-items: center;
+  }
+  
+  .cta-button {
+    background-color: #FBBF24;
+    color: #1E3A8A;
+    padding: 10px 20px;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  .cta-button:hover {
+    background-color: #F59E0B;
+  }
+  
+  .cta-icons {
+    display: flex;
+    margin-left: 15px;
+  }
+  
+  .cta-icon {
+    font-size: 1.5rem;
+    margin-left: 10px;
+    color: white;
+  }
+  

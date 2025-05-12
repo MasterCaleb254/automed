@@ -1,0 +1,21 @@
+[
+  {
+    "symptoms_placeholder": "Describe your symptoms...",
+    "submit": "Submit",
+    "start_voice_input": "Start Voice Input",
+    "listening": "Listening..."
+  },
+  {
+    "symptoms_placeholder": "Describe tus síntomas...",
+    "submit": "Enviar",
+    "start_voice_input": "Iniciar entrada por voz",
+    "listening": "Escuchando..."
+  },
+  {
+    "symptoms_placeholder": "Décrivez vos symptômes...",
+    "submit": "Soumettre",
+    "start_voice_input": "Démarrer l'entrée vocale",
+    "listening": "Écoute..."
+  }
+]
+  

@@ -1,0 +1,129 @@
+class LanguageManager {
+  supportedLanguages: { code: string; name: string }[];
+  currentLanguage: string;
+  translations: Map<string, Record<string, string>>;
+
+  constructor() {
+    this.supportedLanguages = [
+      { code: 'en', name: 'English' },
+      { code: 'es', name: 'Spanish' },
+      { code: 'fr', name: 'French' },
+      { code: 'zh', name: 'Chinese' },
+      { code: 'ar', name: 'Arabic' },
+      { code: 'hi', name: 'Hindi' },
+      { code: 'ru', name: 'Russian' }
+    ];
+    this.translations = new Map();
+    this.currentLanguage = 'en';
+  }
+
+  async detectedLanguage(input: string): Promise<string> {
+    // Example implementation - replace with actual language detection logic
+    if (input.includes('hola')) return 'es';
+    if (input.includes('bonjour')) return 'fr';
+    return 'en'; // Default to English
+  }
+
+  async loadTranslations(languageCode: string): Promise<Record<string, string>> {
+    if (this.translations.has(languageCode)) {
+      return this.translations.get(languageCode)!;
+    }
+    try {
+      const translations = await this.fetchTranslationsFromServer(languageCode);
+      this.translations.set(languageCode, translations);
+      return translations;
+    } catch (error) {
+      console.error(`Failed to load translations for ${languageCode}:`, error);
+      throw error;
+    }
+  }
+
+  async fetchTranslationsFromServer(languageCode: string): Promise<Record<string, string>> {
+    // Example implementation - replace with actual API call
+    return {
+      greeting: "Hello",
+      farewell: "Goodbye"
+    };
+  }
+
+  async setLanguage(languageCode: string): Promise<void> {
+    if (!this.isLanguageSupported(languageCode)) {
+      throw new Error(`Language ${languageCode} is not supported`);
+    }
+    await this.loadTranslations(languageCode);
+    this.currentLanguage = languageCode;
+  }
+
+  isLanguageSupported(languageCode: string): boolean {
+    return this.supportedLanguages.some(lang => lang.code === languageCode);
+  }
+
+  translate(key: string, variables: Record<string, string> = {}): string {
+    const translations = this.translations.get(this.currentLanguage);
+    if (!translations || !translations[key]) {
+      const englishTranslations = this.translations.get('en');
+      return (englishTranslations && englishTranslations[key]) || key;
+    }
+    let text = translations[key];
+    Object.entries(variables).forEach(([varName, value]) => {
+      text = text.replace(new RegExp(`{${varName}}`, 'g'), value);
+    });
+    return text;
+  }
+}
+
+class MultilingualTriageAgent {
+  languageManager: LanguageManager;
+  voiceInput?: { setLanguage: (languageCode: string) => void };
+  isFirstInteraction: boolean = true;
+
+  constructor() {
+    this.languageManager = new LanguageManager();
+  }
+
+  async initializeWithLanguage(languageCode: string): Promise<boolean> {
+    try {
+      await this.languageManager.setLanguage(languageCode);
+      if (this.voiceInput) {
+        this.voiceInput.setLanguage(languageCode);
+      }
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize language:', error);
+      return false;
+    }
+  }
+
+  async detectAndSetLanguage(initialInput: string): Promise<boolean> {
+    try {
+      const detectedLanguage = await this.languageManager.detectedLanguage(initialInput);
+      await this.languageManager.setLanguage(detectedLanguage);
+      return true;
+    } catch (error) {
+      console.error('Failed to detect and set language:', error);
+      return false;
+    }
+  }
+
+  async getTranslatedTriageQuestions(baseQuestions: { id: string; options?: { value: string }[] }[]): Promise<any[]> {
+    return Promise.all(
+      baseQuestions.map(async question => ({
+        ...question,
+        text: this.languageManager.translate(`question.${question.id}`),
+        options: question.options?.map(option => ({
+          ...option,
+          text: this.languageManager.translate(`option.${question.id}.${option.value}`)
+        }))
+      }))
+    );
+  }
+
+  async processPatientInput(input: string): Promise<any> {
+    if (this.isFirstInteraction) {
+      await this.detectAndSetLanguage(input);
+      this.isFirstInteraction = false;
+    }
+    const response = await this.languageManager.translate(input);
+    return response;
+  }
+}

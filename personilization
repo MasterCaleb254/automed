@@ -1,0 +1,116 @@
+class PatientProfile {
+  demographics: { age: number | null; gender: string | null; height: number | null; weight: number | null };
+  medicalHistory: { conditions: string[]; surgeries: string[]; allergies: string[] };
+  medications: string[];
+  previousVisits: any[];
+  preferences: { language: string; communicationMethod: string };
+
+  constructor() {
+    this.demographics = {
+      age: null,
+      gender: null,
+      height: null,
+      weight: null,
+    };
+    this.medicalHistory = {
+      conditions: [],
+      surgeries: [],
+      allergies: [],
+    };
+    this.medications = [];
+    this.previousVisits = [];
+    this.preferences = {
+      language: 'english',
+      communicationMethod: 'text',
+    };
+  }
+
+  updateDemographics(data: Partial<{ age: number; gender: string; height: number; weight: number }>) {
+    this.demographics = { ...this.demographics, ...data };
+    return this;
+  }
+
+  addCondition(condition: string) {
+    this.medicalHistory.conditions.push(condition);
+    return this;
+  }
+
+  addMedication(medication: string) {
+    this.medications.push(medication);
+    return this;
+  }
+
+  getRelevantMedicalHistory(complaint: string) {
+    // Logic to filter history relevant to current complaint
+    return this.medicalHistory.conditions.filter((condition) => {
+      // Implement relevance logic here
+      return condition.includes(complaint);
+    });
+  }
+}
+
+class TriageAgent {
+  // Placeholder for the base class
+}
+
+class PersonalizedTriageAgent extends TriageAgent {
+  patientProfiles: Map<string, PatientProfile>;
+
+  constructor() {
+    super();
+    this.patientProfiles = new Map(); // Store profiles by patientId
+  }
+
+  async startTriageSession(patientId: string) {
+    let profile = this.patientProfiles.get(patientId);
+    if (!profile) {
+      profile = new PatientProfile();
+      this.patientProfiles.set(patientId, profile);
+      await this.loadPatientDataFromEHR(patientId, profile);
+    }
+    return this.initializeTriageWithPersonalization(profile);
+  }
+
+  async loadPatientDataFromEHR(patientId: string, profile: PatientProfile) {
+    // Simulate loading data from an EHR system
+    console.log(`Loading data for patient ${patientId}`);
+  }
+
+  initializeTriageWithPersonalization(profile: PatientProfile) {
+    const baseQuestions = this.getBaseTriageQuestions();
+    const personalizedQuestions = this.customizeQuestionsForPatient(baseQuestions, profile);
+    const initialRiskAssessment = this.assessInitialRisk(profile);
+
+    return {
+      questions: personalizedQuestions,
+      initialRiskLevel: initialRiskAssessment,
+      patientProfile: profile,
+    };
+  }
+
+  getBaseTriageQuestions() {
+    // Placeholder for base triage questions
+    return [];
+  }
+
+  customizeQuestionsForPatient(questions: any[], profile: PatientProfile) {
+    return questions
+      .filter((q) => this.isQuestionRelevantForPatient(q, profile))
+      .map((q) => this.personalizeQuestionText(q, profile));
+  }
+
+  isQuestionRelevantForPatient(question: any, profile: PatientProfile) {
+    // Placeholder for relevance logic
+    return true;
+  }
+
+  personalizeQuestionText(question: any, profile: PatientProfile) {
+    // Placeholder for personalization logic
+    return question;
+  }
+
+  assessInitialRisk(profile: PatientProfile) {
+    // Placeholder for risk assessment logic
+    return 'low';
+  }
+}

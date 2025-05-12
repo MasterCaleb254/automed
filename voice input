@@ -1,0 +1,179 @@
+class VoiceInputHandler {
+  constructor(languageCode = 'en-US') {
+    this.recognition = null;
+    this.languageCode = languageCode;
+    this.isListening = false;
+    this.transcriptCallback = null;
+  }
+  
+  initialize() {
+    // Check browser compatibility
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      throw new Error('Speech recognition not supported in this browser');
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    this.recognition = new SpeechRecognition();
+    
+    // Configure recognition
+    this.recognition.continuous = false;
+    this.recognition.interimResults = true;
+    this.recognition.lang = this.languageCode;
+    
+    // Set up event handlers
+    this.setupEventHandlers();
+  }
+  
+  setupEventHandlers() {
+    this.recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map(result => result[0].transcript)
+        .join('');
+        
+      if (event.results[0].isFinal && this.transcriptCallback) {
+        this.transcriptCallback(transcript);
+      }
+    };
+    
+    this.recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+    };
+    
+    this.recognition.onend = () => {
+      this.isListening = false;
+    };
+  }
+  
+  startListening(callback) {
+    if (!this.recognition) {
+      this.initialize();
+    }
+    
+    this.transcriptCallback = callback;
+    this.recognition.start();
+    this.isListening = true;
+  }
+  
+  stopListening() {
+    if (this.isListening && this.recognition) {
+      this.recognition.stop();
+    }
+  }
+  
+  setLanguage(languageCode) {
+    this.languageCode = languageCode;
+    if (this.recognition) {
+      this.recognition.lang = languageCode;
+    }
+  }
+}
+
+// Integration with triage system
+class VoiceEnabledTriageAgent extends PersonalizedTriageAgent {
+  constructor() {
+    super();
+    this.voiceInput = new VoiceInputHandler();
+    this.voiceOutput = new SpeechSynthesisHandler();
+  }
+  
+  enableVoiceInterface() {
+    try {
+      this.voiceInput.initialize();
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize voice interface:', error);
+      return false;
+    }
+  }
+  
+  startVoiceInput() {
+    this.voiceInput.startListening((transcript) => {
+      this.processPatientInput(transcript);
+    });
+  }
+  
+  speakResponse(responseText) {
+    this.voiceOutput.speak(responseText, {
+      rate: 1.0,
+      pitch: 1.0,
+      language: this.currentLanguage
+    });
+  }
+  
+  async processPatientInput(input) {
+    // Process the transcribed text through the triage system
+    const response = await this.processTriageInput(input);
+    
+    // If voice interface is active, also speak the response
+    if (this.isVoiceInterfaceActive) {
+      this.speakResponse(response.text);
+    }
+    
+    return response;
+  }
+}
+
+class SpeechSynthesisHandler {
+  constructor() {
+    this.synth = window.speechSynthesis;
+    this.voiceMap = new Map(); // Cache voices by language
+  }
+  
+  loadVoices() {
+    return new Promise((resolve) => {
+      const voices = this.synth.getVoices();
+      if (voices.length > 0) {
+        this.processVoices(voices);
+        resolve(voices);
+      } else {
+        // Chrome sometimes needs this event
+        this.synth.onvoiceschanged = () => {
+          const updatedVoices = this.synth.getVoices();
+          this.processVoices(updatedVoices);
+          resolve(updatedVoices);
+        };
+      }
+    });
+  }
+  
+  processVoices(voices) {
+    // Group voices by language
+    voices.forEach(voice => {
+      const langCode = voice.lang.split('-')[0];
+      if (!this.voiceMap.has(langCode)) {
+        this.voiceMap.set(langCode, []);
+      }
+      this.voiceMap.get(langCode).push(voice);
+    });
+  }
+  
+  async speak(text, options = {}) {
+    const { rate = 1.0, pitch = 1.0, language = 'en' } = options;
+    
+    if (this.voiceMap.size === 0) {
+      await this.loadVoices();
+    }
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = rate;
+    utterance.pitch = pitch;
+    
+    // Select appropriate voice for language
+    const langCode = language.split('-')[0];
+    const voices = this.voiceMap.get(langCode) || this.voiceMap.get('en') || [];
+    if (voices.length > 0) {
+      utterance.voice = voices[0]; // Use first voice for the language
+      utterance.lang = voices[0].lang;
+    }
+    
+    this.synth.speak(utterance);
+    
+    return new Promise((resolve) => {
+      utterance.onend = resolve;
+    });
+  }
+  
+  cancel() {
+    this.synth.cancel();
+  }
+}
